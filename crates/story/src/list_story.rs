@@ -4,8 +4,9 @@ use fake::Fake;
 use gpui::{
     App, AppContext, Context, ElementId, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ParentElement, Render, RenderOnce, ScrollStrategy, SharedString, Styled,
-    Subscription, Task, Timer, Window, actions, div, px,
+    Subscription, Task, Window, actions, div, px,
 };
+use smol::Timer;
 
 use gpui_component::{
     ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable,

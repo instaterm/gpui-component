@@ -3,9 +3,10 @@ use std::{sync::Arc, time::Duration};
 use fake::Fake;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement, Render, SharedString, Styled, Task, Timer, WeakEntity, Window, div,
+    ParentElement, Render, SharedString, Styled, Task, WeakEntity, Window, div,
     prelude::FluentBuilder as _, px,
 };
+use smol::Timer;
 use raw_window_handle::HasWindowHandle;
 
 use gpui_component::{

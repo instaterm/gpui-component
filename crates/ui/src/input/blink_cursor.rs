@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use gpui::{px, Context, Pixels, Task, Timer};
+use gpui::{px, Context, Pixels, Task};
+use smol::Timer;
 
 static INTERVAL: Duration = Duration::from_millis(500);
 static PAUSE_DELAY: Duration = Duration::from_millis(300);
@@ -59,7 +60,7 @@ impl BlinkCursor {
         self._task = cx.spawn(async move |this, cx| {
             Timer::after(INTERVAL).await;
             if let Some(this) = this.upgrade() {
-                this.update(cx, |this, cx| this.blink(epoch, cx)).ok();
+                this.update(cx, |this, cx| this.blink(epoch, cx));
             }
         });
     }
@@ -84,8 +85,7 @@ impl BlinkCursor {
                 this.update(cx, |this, cx| {
                     this.paused = false;
                     this.blink(epoch, cx);
-                })
-                .ok();
+                });
             }
         });
     }

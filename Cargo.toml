@@ -27,9 +27,9 @@ gpui-component-macros = { path = "crates/macros", version = "0.5.1" }
 gpui-component-assets = { path = "crates/assets", version = "0.5.1" }
 story = { path = "crates/story" }
 
-gpui = "0.2.2"
-gpui-macros = "0.2.2"
-reqwest = { version = "0.12.15-zed", package = "zed-reqwest" }
+gpui = {git="https://github.com/instaterm/zed", branch = "0.225.x"}
+gpui-macros = {git="https://github.com/instaterm/zed", branch = "0.225.x", package = "gpui_macros"}
+reqwest = { version = "0.12.15-zed", package = "zed-reqwest", features = ["rustls-tls", "stream"] }
 sum-tree = { version = "0.2.0", package = "zed-sum-tree" }
 
 anyhow = "1"
