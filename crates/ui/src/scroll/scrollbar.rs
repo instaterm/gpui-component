@@ -78,7 +78,8 @@ impl ScrollbarHandle for ScrollHandle {
     }
 
     fn content_size(&self) -> Size<Pixels> {
-        self.max_offset() + self.bounds().size
+        let max_offset: Size<Pixels> = self.max_offset().into();
+        max_offset + self.bounds().size
     }
 }
 
@@ -93,7 +94,8 @@ impl ScrollbarHandle for UniformListScrollHandle {
 
     fn content_size(&self) -> Size<Pixels> {
         let base_handle = &self.0.borrow().base_handle;
-        base_handle.max_offset() + base_handle.bounds().size
+        let max_offset: Size<Pixels> = base_handle.max_offset().into();
+        max_offset + base_handle.bounds().size
     }
 }
 
@@ -107,7 +109,8 @@ impl ScrollbarHandle for ListState {
     }
 
     fn content_size(&self) -> Size<Pixels> {
-        self.viewport_bounds().size + self.max_offset_for_scrollbar()
+        let max_offset: Size<Pixels> = self.max_offset_for_scrollbar().into();
+        self.viewport_bounds().size + max_offset
     }
 
     fn start_drag(&self) {
