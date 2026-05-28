@@ -36,7 +36,6 @@ pub fn box_shadow(
         offset: point(x.into(), y.into()),
         blur_radius: blur.into(),
         spread_radius: spread.into(),
-        inset: false,
         color,
     }
 }
