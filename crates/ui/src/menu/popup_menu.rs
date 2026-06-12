@@ -2,7 +2,7 @@ use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_flex};
+use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable, h_flex, v_flex};
 use crate::{Side, Size, StyledExt, kbd::Kbd};
 use gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
@@ -1092,6 +1092,7 @@ impl PopupMenu {
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
         let (item_height, radius) = match self.size {
+            Size::Size(h) => (h, options.radius),
             Size::Small => (px(20.), options.radius.half()),
             _ => (px(26.), options.radius),
         };
@@ -1272,6 +1273,15 @@ impl PopupMenu {
 }
 
 impl FluentBuilder for PopupMenu {}
+impl Sizable for PopupMenu {
+    /// Set the menu item height. A custom `Size::Size(px)` is honored verbatim
+    /// in `render_item`; the named sizes fall back to their built-in heights
+    /// (`Small` → 20px, others → 26px).
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
 impl EventEmitter<DismissEvent> for PopupMenu {}
 impl Focusable for PopupMenu {
     fn focus_handle(&self, _: &App) -> FocusHandle {
