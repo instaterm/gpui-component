@@ -281,6 +281,12 @@ pub struct PopupMenu {
     max_height: Option<Pixels>,
     bounds: Bounds<Pixels>,
     size: Size,
+    /// Optional explicit font size for menu text — item labels, submenu labels,
+    /// and shortcut hints. Overrides the per-row default `text_sm` (and the
+    /// shortcut `Kbd`'s `text_xs`), so a caller can size a dropdown independently
+    /// of the global `theme.font_size`. `None` keeps the framework defaults.
+    /// Submenus are built as separate menus, so set this on each level.
+    text_size: Option<Pixels>,
     check_side: Side,
 
     /// The parent menu of this menu, if this is a submenu
@@ -311,6 +317,7 @@ impl PopupMenu {
             scroll_handle: ScrollHandle::default(),
             external_link_icon: true,
             size: Size::default(),
+            text_size: None,
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
             _subscriptions: vec![],
         }
@@ -365,6 +372,16 @@ impl PopupMenu {
     /// Set max height of the popup menu, default is half of the window height
     pub fn max_h(mut self, height: impl Into<Pixels>) -> Self {
         self.max_height = Some(height.into());
+        self
+    }
+
+    /// Set an explicit font size for menu text: item labels, submenu labels, and
+    /// shortcut hints. Overrides the per-row default `text_sm` and the shortcut
+    /// `Kbd`'s `text_xs`, so a caller can size the dropdown independently of the
+    /// global `theme.font_size`. Submenus are built as separate menus, so set
+    /// this on each level (e.g. inside the `submenu` builder closure).
+    pub fn text_size(mut self, size: impl Into<Pixels>) -> Self {
+        self.text_size = Some(size.into());
         self
     }
 
@@ -1020,6 +1037,9 @@ impl PopupMenu {
                 .flex_nowrap()
                 .border_0()
                 .bg(gpui::transparent_white())
+                // Follow the menu font size when set, so the hint isn't pinned to
+                // the global `theme.font_size`-derived `text_xs`.
+                .when_some(self.text_size, |this, size| this.text_size(size))
         })
     }
 
@@ -1099,7 +1119,12 @@ impl PopupMenu {
 
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
-            .text_sm()
+            // Honor an explicit menu font size; otherwise keep the `text_sm`
+            // default. The row text size flows down to item and submenu labels.
+            .map(|this| match self.text_size {
+                Some(size) => this.text_size(size),
+                None => this.text_sm(),
+            })
             .py_0()
             .px(INNER_PADDING)
             .rounded(radius)
@@ -1137,9 +1162,15 @@ impl PopupMenu {
                 render,
                 icon,
                 disabled,
+                action,
                 ..
-            } => this
-                .when(!disabled, |this| {
+            } => {
+                // A custom-label item carrying an action keeps the shortcut hint,
+                // using the same `action_context` lookup as a plain `Item`.
+                let action = action.as_ref().map(|action| action.boxed_clone());
+                let key = self.render_key_binding(action, window, cx);
+
+                this.when(!disabled, |this| {
                     this.on_click(
                         cx.listener(move |this, _, window, cx| this.on_click(ix, window, cx)),
                     )
@@ -1147,20 +1178,29 @@ impl PopupMenu {
                 .disabled(*disabled)
                 .child(
                     h_flex()
-                        .flex_1()
+                        .w_full()
                         .min_h(item_height)
                         .items_center()
+                        .justify_between()
                         .gap_x_1()
-                        .children(Self::render_icon(
-                            has_left_icon,
-                            is_left_check,
-                            icon.clone(),
-                            window,
-                            cx,
-                        ))
-                        .child((render)(window, cx))
-                        .children(right_check_icon.map(|icon| icon.ml_3())),
-                ),
+                        .child(
+                            h_flex()
+                                .flex_1()
+                                .items_center()
+                                .gap_x_1()
+                                .children(Self::render_icon(
+                                    has_left_icon,
+                                    is_left_check,
+                                    icon.clone(),
+                                    window,
+                                    cx,
+                                ))
+                                .child((render)(window, cx)),
+                        )
+                        .children(right_check_icon.map(|icon| icon.ml_3()))
+                        .children(key),
+                )
+            }
             PopupMenuItem::Item {
                 icon,
                 label,
@@ -1362,5 +1402,92 @@ impl Render for PopupMenu {
                 // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
                 this.vertical_scrollbar(&self.scroll_handle)
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{TestAppContext, actions};
+
+    actions!(popup_menu_test, [TestAction]);
+
+    /// The `text_size` override is stored per level, a custom-label `ElementItem`
+    /// keeps its action (so the shared shortcut-hint lookup applies to it just as
+    /// to a plain `Item`), and a submenu still carries its items and its own
+    /// explicit text size. Together these cover the fork's new capabilities:
+    /// custom-label items retain shortcut hints, and submenu labels can be sized
+    /// off an explicit menu font size rather than the global `text_sm`/`text_xs`.
+    #[gpui::test]
+    fn text_size_and_custom_label_shortcut(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            init(cx);
+            // App-level binding so `render_key_binding`'s fallback can resolve it
+            // even without a focused context.
+            cx.bind_keys([KeyBinding::new("ctrl-shift-k", TestAction, None)]);
+        });
+        let cx = cx.add_empty_window();
+
+        let menu = cx.update(|window, cx| {
+            let action_context = cx.focus_handle();
+            PopupMenu::build(window, cx, move |menu, window, cx| {
+                menu.text_size(px(12.))
+                    .action_context(action_context)
+                    // Plain item with an action — renders a shortcut hint.
+                    .menu("Copy", Box::new(TestAction))
+                    // Custom-label item with an action — must also keep the hint.
+                    .item(
+                        PopupMenuItem::element(|_, _| div().child("Custom"))
+                            .action(Box::new(TestAction)),
+                    )
+                    // Submenu — chevron + hover expand ride on the variant; its
+                    // label is sized by the parent level's `text_size`.
+                    .submenu("More", window, cx, |sub, _, _| {
+                        sub.text_size(px(12.)).menu("Nested", Box::new(TestAction))
+                    })
+            })
+        });
+
+        menu.update_in(cx, |menu, window, cx| {
+            assert_eq!(
+                menu.text_size,
+                Some(px(12.)),
+                "menu stores the explicit text size"
+            );
+            assert!(!menu.is_empty(), "menu has items");
+
+            // The shortcut lookup the `ElementItem` branch now shares with `Item`
+            // resolves the bound key.
+            let kbd = menu.render_key_binding(Some(Box::new(TestAction)), window, cx);
+            assert!(kbd.is_some(), "a bound action yields a shortcut hint");
+
+            // The custom-label item keeps its action, so the hint renders for it.
+            let custom_has_action = menu.menu_items.iter().any(|item| {
+                matches!(
+                    item,
+                    PopupMenuItem::ElementItem {
+                        action: Some(_),
+                        ..
+                    }
+                )
+            });
+            assert!(custom_has_action, "custom-label item retains its action");
+
+            // The submenu is intact (chevron/expand) and sized off its own level.
+            let submenu = menu
+                .menu_items
+                .iter()
+                .find_map(|item| match item {
+                    PopupMenuItem::Submenu { menu, .. } => Some(menu.clone()),
+                    _ => None,
+                })
+                .expect("submenu present");
+            assert!(!submenu.read(cx).is_empty(), "submenu retains its items");
+            assert_eq!(
+                submenu.read(cx).text_size,
+                Some(px(12.)),
+                "submenu level honors its own explicit text size",
+            );
+        });
     }
 }
