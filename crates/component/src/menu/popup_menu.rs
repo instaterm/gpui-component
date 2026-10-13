@@ -1219,6 +1219,7 @@ impl PopupMenu {
 
         let (item_height, radius) = match self.size {
             Size::Small => (px(20.), options.radius.half()),
+            Size::Size(height) => (height, options.radius),
             _ => (px(26.), options.radius),
         };
 
@@ -1507,6 +1508,13 @@ impl Render for PopupMenu {
             .when(self.scrollable, |this| {
                 this.vertical_scrollbar(&self.scroll_handle)
             })
+    }
+}
+
+impl crate::Sizable for PopupMenu {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
     }
 }
 
