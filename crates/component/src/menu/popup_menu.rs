@@ -299,6 +299,7 @@ pub struct PopupMenu {
     max_height: Option<Pixels>,
     bounds: Bounds<Pixels>,
     size: Size,
+    text_size: Option<gpui::AbsoluteLength>,
     check_side: Side,
 
     /// The parent menu of this menu, if this is a submenu
@@ -331,6 +332,11 @@ pub struct PopupMenu {
 }
 
 impl PopupMenu {
+    pub fn text_size(mut self, size: impl Into<gpui::AbsoluteLength>) -> Self {
+        self.text_size = Some(size.into());
+        self
+    }
+
     pub(crate) fn new(cx: &mut App) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
@@ -349,6 +355,7 @@ impl PopupMenu {
             scroll_handle: ScrollHandle::default(),
             external_link_icon: true,
             size: Size::default(),
+            text_size: None,
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
             priority: gpui_base::POPUP_PRIORITY,
             _subscriptions: vec![],
@@ -715,6 +722,7 @@ impl PopupMenu {
         let parent_priority = self.priority;
         submenu.update(cx, |view, _| {
             view.parent_menu = Some(parent_menu);
+            view.text_size = view.text_size.or(self.text_size);
             view.priority = parent_priority + 1;
         });
 
@@ -1147,6 +1155,7 @@ impl PopupMenu {
                 .flex_nowrap()
                 .border_0()
                 .bg(gpui::transparent_white())
+                .when_some(self.text_size, |kbd, size| kbd.text_size(size))
         })
     }
 
@@ -1226,6 +1235,7 @@ impl PopupMenu {
         let this = MenuItemElement::new(ix)
             .relative()
             .text_sm()
+            .when_some(self.text_size, |item, size| item.text_size(size))
             .py_0()
             .px(INNER_PADDING)
             .rounded(radius)
@@ -1268,6 +1278,7 @@ impl PopupMenu {
             PopupMenuItem::ElementItem {
                 render,
                 icon,
+                action,
                 disabled,
                 ..
             } => this
@@ -1290,7 +1301,12 @@ impl PopupMenu {
                             window,
                             cx,
                         ))
-                        .child((render)(window, cx))
+                        .child(div().flex_1().child((render)(window, cx)))
+                        .children(self.render_key_binding(
+                            action.as_ref().map(|action| action.boxed_clone()),
+                            window,
+                            cx,
+                        ))
                         .children(right_check_icon.map(|icon| icon.ml_3())),
                 ),
             PopupMenuItem::Item {
@@ -1440,6 +1456,7 @@ impl Render for PopupMenu {
                     menu.update(cx, |menu, _| {
                         menu.parent_menu = Some(parent.clone());
                         menu.priority = parent_priority + 1;
+                        menu.text_size = menu.text_size.or(self.text_size);
                     });
                 }
             }
@@ -1521,6 +1538,93 @@ impl crate::Sizable for PopupMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    gpui::actions!(popup_menu_tests, [ShortcutTest]);
+
+    #[gpui::test]
+    fn item_submenu_preserves_size_and_inherits_missing_text_size(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let submenu = cx.update(|cx| cx.new(|cx| PopupMenu::new(cx).with_size(px(29.))));
+        let child = submenu.clone();
+        let (_menu, vcx) = cx.add_window_view(move |_, cx| {
+            PopupMenu::new(cx)
+                .with_size(px(31.))
+                .text_size(px(15.))
+                .item(PopupMenuItem::submenu("More", child.clone()))
+        });
+        vcx.run_until_parked();
+        submenu.read_with(vcx, |menu, _| {
+            assert_eq!(menu.size, Size::Size(px(29.)));
+            assert_eq!(menu.text_size, Some(px(15.).into()));
+            assert!(menu.parent_menu.is_some());
+        });
+    }
+
+    #[gpui::test]
+    fn item_submenu_preserves_explicit_text_size_with_default_parent(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let submenu = cx.update(|cx| cx.new(|cx| PopupMenu::new(cx).text_size(px(17.))));
+        let child = submenu.clone();
+        let (_menu, vcx) = cx.add_window_view(move |_, cx| {
+            PopupMenu::new(cx).item(PopupMenuItem::submenu("More", child.clone()))
+        });
+        vcx.run_until_parked();
+        submenu.read_with(vcx, |menu, _| {
+            assert_eq!(menu.text_size, Some(px(17.).into()));
+        });
+    }
+
+    #[gpui::test]
+    fn builder_submenu_preserves_explicit_style_and_inherits_missing_text_size(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let vcx = cx.add_empty_window();
+        let menu = vcx.update(|window, cx| {
+            PopupMenu::build(window, cx, |menu, window, cx| {
+                menu.with_size(px(31.))
+                    .text_size(px(15.))
+                    .submenu("Explicit", window, cx, |sub, _, _| {
+                        sub.with_size(px(29.)).text_size(px(17.))
+                    })
+                    .submenu("Inherited", window, cx, |sub, _, _| sub)
+            })
+        });
+        menu.read_with(vcx, |menu, cx| {
+            let PopupMenuItem::Submenu { menu: explicit, .. } = &menu.menu_items[0] else {
+                panic!("expected submenu")
+            };
+            assert_eq!(explicit.read(cx).size, Size::Size(px(29.)));
+            assert_eq!(explicit.read(cx).text_size, Some(px(17.).into()));
+            let PopupMenuItem::Submenu {
+                menu: inherited, ..
+            } = &menu.menu_items[1]
+            else {
+                panic!("expected submenu")
+            };
+            assert_eq!(inherited.read(cx).text_size, Some(px(15.).into()));
+        });
+    }
+
+    #[gpui::test]
+    fn custom_element_paints_shortcut_hint(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.bind_keys([gpui::KeyBinding::new("ctrl-shift-k", ShortcutTest, None)]);
+        });
+        let (_menu, vcx) = cx.add_window_view(|_, cx| {
+            PopupMenu::new(cx).text_size(px(15.)).item(
+                PopupMenuItem::element(|_, _| div().child("Custom")).action(Box::new(ShortcutTest)),
+            )
+        });
+        vcx.run_until_parked();
+        assert!(
+            vcx.debug_bounds("kbd:ctrl-shift-k").is_some(),
+            "the custom item must paint its shortcut hint"
+        );
+    }
 
     #[gpui::test]
     fn popup_menu_item_a11y_label_uses_visible_label(cx: &mut gpui::TestAppContext) {
