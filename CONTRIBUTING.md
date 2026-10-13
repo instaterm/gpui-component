@@ -6,6 +6,17 @@ Please ensure that you are using clean code, following the coding style and code
 
 Please submit **one PR that does one thing**, this is important, and helps us to review your code more easily and push to merge fast.
 
+## Instaterm consumer branch
+
+This fork serves Instaterm. GPUI dependencies track the `v1.23.x` stable branch
+of `instaterm/zed`, with the resolved commits recorded in `Cargo.lock`. Local
+path dependencies are only for joint validation and must be replaced with
+remote branch dependencies before publication. The exact `gpui-pre` version
+requirements below apply to upstream crates.io releases, not this consumer
+branch. CI retains the `--locked` Rust builds and tests and omits the check
+that only accepts `gpui-pre` dependencies. Instaterm's `docs/gpui-fork-patches.md`
+records compatibility changes, behavior patches, and their removal criteria.
+
 ## GPUI and GPUI Kit
 
 GPUI Kit is built on top of GPUI. We do not aim to fork GPUI or maintain a separate GPUI implementation.

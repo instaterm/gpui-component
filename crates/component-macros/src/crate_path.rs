@@ -11,7 +11,8 @@ use quote::quote;
 pub(crate) fn gpui() -> syn::Result<TokenStream> {
     match crate_name("gpui-kit") {
         Ok(found) => Ok(found_crate_path(found)),
-        Err(kit_error) => crate_name("gpui-pre")
+        Err(kit_error) => crate_name("gpui")
+            .or_else(|_| crate_name("gpui-pre"))
             .map(found_crate_path)
             .map_err(|gpui_error| {
                 syn::Error::new(
